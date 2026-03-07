@@ -18,10 +18,16 @@ public class TextureArrayTilesExample : MonoBehaviour
     public float ZoomBase = 20f;
     public float ZoomSpeed = 1f;
 
+    [Header("Tile Transform")] public float TileScale = 1.0f;
+    public float RotationAmplitude = 30f;
+    public float WaveFrequency = 0.3f;
+    public float TileSpacing = 1.5f;
+
     private Mesh _quad;
 
     private List<Matrix4x4> _matrices;
-    private List<float> _tileIndices;
+    private float[] _tileIndices; // GPU API only accepts contiguous arrays, not List<T>. Avoid an implicit conversion.
+    
 
     private MaterialPropertyBlock _propertyBlock;
 
@@ -40,7 +46,7 @@ public class TextureArrayTilesExample : MonoBehaviour
         int count = GridSize * GridSize;
 
         _matrices = new List<Matrix4x4>(count);
-        _tileIndices = new List<float>(count);
+        _tileIndices = new float[count];
 
         _propertyBlock = new MaterialPropertyBlock();
 
@@ -53,10 +59,8 @@ public class TextureArrayTilesExample : MonoBehaviour
             float tileIndex =
                 Random.Range(0, TileTextures.Length);
 
-            _tileIndices.Add(tileIndex);
+            _tileIndices[i] = tileIndex;
         }
-
-        Material.SetTexture("_Tiles", _tileArray);
 
         Debug.Log($"Texture array layers: {_tileArray.depth}");
     }
@@ -103,31 +107,43 @@ public class TextureArrayTilesExample : MonoBehaviour
 
         int index = 0;
 
+        Vector3 scaleVector = Vector3.one * TileScale;
+
         for (int y = 0; y < GridSize; y++)
         {
             for (int x = 0; x < GridSize; x++)
             {
                 float wave =
-                    Mathf.Sin(time + x * 0.3f + y * 0.3f);
+                    Mathf.Sin(time + x * WaveFrequency + y * WaveFrequency);
 
                 Vector3 position =
                     new Vector3(
-                        (x - GridSize * 0.5f) * 1.5f,
-                        (y - GridSize * 0.5f) * 1.5f,
+                        (x - GridSize * 0.5f) * TileSpacing,
+                        (y - GridSize * 0.5f) * TileSpacing,
                         0
                     );
 
                 Quaternion rotation =
-                    Quaternion.Euler(0, 0, wave * 30f);
+                    Quaternion.Euler(
+                        0,
+                        0,
+                        wave * RotationAmplitude
+                    );
 
                 _matrices[index] =
-                    Matrix4x4.TRS(position, rotation, Vector3.one);
+                    Matrix4x4.TRS(
+                        position,
+                        rotation,
+                        scaleVector
+                    );
 
                 index++;
             }
         }
 
+        // Upload per-instance tile indices to the GPU
         _propertyBlock.SetFloatArray("_TileIndex", _tileIndices);
+        _propertyBlock.SetTexture("_Tiles", _tileArray);
 
         Graphics.DrawMeshInstanced(
             _quad,
