@@ -1,0 +1,19 @@
+## TODOs & Ideas
+- Basic GPU Instancing Examples
+  - **Tile scale parameter**. Expose a global `TileScale` in the inspector to control tile size. Ranomdize scale per tile
+  - **Tile spacing control**.  Allow changing spacing between tiles without modifying code.
+  - **Rotation toggle**. Add a checkbox to enable/disable the wave rotation animation. Or better choose diffrent patterns for a wave form (including NONE)
+  - **Static mode**. Option to disable animation completely to measure baseline performance.
+  - **Color palette mode**. Choose colors from a predefined palette instead of random colors. Each tiles could have a colorscheme (emulation of materials inside pixels color, (sand-yellow, grass green)
+  - **Gradient coloring**. Color tiles based on their grid position. Nice effect
+  - **Color shift**. Slowly shift instance colors over time. Or change it using color erp. Nice effect
+  - **Height‑based coloring**. Use the wave value to change color brightness.
+  - **Deterministic tile layout**. Use a seeded random generator so the layout stays the same every run. Throw a dice and remeber the seed to have entire pattern as asset. Patches on top
+  - **Tile index animation**. Randomly change tile index every few seconds.
+  - **Grid pattern modes**. Checkerboard/Stripes/Random noise/cellar automata
+  - **Runtime texture array rebuild**. Allow swapping tile sets at runtime.
+  - **Atlas debug overlay**. Draw tile borders to visualize atlas regions.
+  - **Tile highlight**. Highlight hovered tiles using instance metadata.
+  - **Animated atlas frames**. Cycle atlas regions to simulate sprite animation.
+  - **Random tile rotation** Randomly rotate tiles while still using the atlas.
+  - **Atlas grid auto detection** Compute rows/columns automatically from texture size and tile size.
