@@ -1,0 +1,129 @@
+#pragma kernel GenerateFromCommands
+
+/*
+============================================================
+STEP 03 — SDF COMMAND INTERPRETER
+============================================================
+
+Features
+
+• GPU command interpreter
+• StructuredBuffer command list
+• Boolean SDF operations
+• Procedural shape composition
+
+============================================================
+*/
+
+struct SDFCommand
+{
+    int shapeType;
+    int operation;
+
+    float4 paramsA;
+    float4 paramsB;
+};
+
+StructuredBuffer<SDFCommand> Commands;
+
+int CommandCount;
+
+RWTexture2D<float4> Result;
+
+int Resolution;
+
+// ------------------------------------------------
+// SDF Shape Library
+// ------------------------------------------------
+
+float sdCircle(float2 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdBox(float2 p, float2 b)
+{
+    float2 d = abs(p) - b;
+    return length(max(d,0)) + min(max(d.x,d.y),0);
+}
+
+float sdHorizontalLine(float2 p, float thickness)
+{
+    return abs(p.y) - thickness;
+}
+
+float sdCross(float2 p, float thickness)
+{
+    float d1 = abs(p.y) - thickness;
+    float d2 = abs(p.x) - thickness;
+    return min(d1,d2);
+}
+
+float EvaluateShape(int type, float2 p, float4 paramsA)
+{
+    float radius = paramsA.x;
+    float width  = paramsA.x;
+    float height = paramsA.y;
+    float thick  = paramsA.z;
+
+    if(type == 0)
+        return sdCircle(p,radius);
+
+    if(type == 1)
+        return sdBox(p,float2(width,height));
+
+    if(type == 2)
+        return sdHorizontalLine(p,thick);
+
+    if(type == 3)
+        return sdCross(p,thick);
+
+    return 1e5;
+}
+
+// ------------------------------------------------
+
+float ApplyOp(float a, float b, int op)
+{
+    if(op == 0) return min(a,b);
+    if(op == 1) return max(a,-b);
+    if(op == 2) return max(a,b);
+
+    return a;
+}
+
+// ------------------------------------------------
+
+[numthreads(8,8,1)]
+void GenerateFromCommands(uint3 id : SV_DispatchThreadID)
+{
+    if(id.x >= (uint)Resolution || id.y >= (uint)Resolution)
+        return;
+
+    float2 uv = (id.xy + 0.5) / Resolution;
+
+    float2 p = uv - 0.5;
+
+    float d = 1e5;
+
+    for(int i=0;i<CommandCount;i++)
+    {
+        SDFCommand cmd = Commands[i];
+
+        float shapeDist =
+            EvaluateShape(
+                cmd.shapeType,
+                p - cmd.paramsB.xy,
+                cmd.paramsA
+            );
+
+        if(i == 0)
+            d = shapeDist;
+        else
+            d = ApplyOp(d,shapeDist,cmd.operation);
+    }
+
+    float v = smoothstep(0.02,-0.02,d);
+
+    Result[id.xy] = float4(v,v,v,1);
+}

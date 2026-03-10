@@ -1,5 +1,572 @@
 // --- Source Blob ---
 
+Files included:
+- Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTiles.shader
+- Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTilesExample.cs
+- Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\SimpleBatchExample.cs
+- Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColor.shader
+- Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\MinWhite.shader
+- Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\03.TextureArrayTiles_README.md
+- todo.md
+- Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\TextureArrayTilesExample.cs
+- Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\02.InstanceColor_README.md
+- readme.md
+- Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColorExample.cs
+- Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\04.TextureAtlasTiles_README.md
+- Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\TextureArrayTiles.shader
+- Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\01.BatchForEach1024_README.md
+
+--------------------------------------------------
+
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTiles.shader ---
+
+Shader "Tutorial/TextureAtlasTiles"
+{
+    Properties
+    {
+        _Atlas ("Atlas Texture", 2D) = "white" {}
+    }
+
+    SubShader
+    {
+        Tags
+        {
+            "RenderType"="Transparent"
+            "Queue"="Transparent"
+            "RenderPipeline"="UniversalPipeline"
+        }
+
+        Pass
+        {
+            Name "Forward"
+            Tags { "LightMode"="UniversalForward" }
+
+            Blend SrcAlpha OneMinusSrcAlpha
+            ZWrite Off
+
+            HLSLPROGRAM
+
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile_instancing
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            TEXTURE2D(_Atlas);
+            SAMPLER(sampler_Atlas);
+
+            struct Attributes
+            {
+                float3 positionOS : POSITION;
+                float2 uv : TEXCOORD0;
+
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            UNITY_INSTANCING_BUFFER_START(Props)
+                UNITY_DEFINE_INSTANCED_PROP(float4,_AtlasUV)
+            UNITY_INSTANCING_BUFFER_END(Props)
+
+
+            Varyings vert(Attributes input)
+            {
+                UNITY_SETUP_INSTANCE_ID(input);
+
+                Varyings output;
+
+                VertexPositionInputs pos =
+                    GetVertexPositionInputs(input.positionOS);
+
+                output.positionCS = pos.positionCS;
+
+                float4 atlas =
+                    UNITY_ACCESS_INSTANCED_PROP(Props,_AtlasUV);
+
+                output.uv =
+                    input.uv * atlas.xy + atlas.zw;
+
+                return output;
+            }
+
+
+            half4 frag(Varyings input) : SV_Target
+            {
+                half4 color =
+                    SAMPLE_TEXTURE2D(
+                        _Atlas,
+                        sampler_Atlas,
+                        input.uv
+                    );
+
+                return color;
+            }
+
+            ENDHLSL
+        }
+    }
+}
+
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTiles.shader ---
+
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTilesExample.cs ---
+
+using UnityEngine;
+using System.Collections.Generic;
+
+/// <summary>
+/// Demonstrates GPU instancing using a texture atlas.
+/// Each instance selects a tile region from a shared atlas texture.
+/// </summary>
+public class TextureAtlasTilesExample : MonoBehaviour
+{
+    /*
+    TODO ROADMAP
+
+    Step 04.TextureAtlasTiles
+    ✔ atlas texture sampling
+    ✔ per-instance atlas UV transform
+
+    Next Steps
+    02.GPUInstanceData
+    - structured GPU instance buffers
+    - remove MaterialPropertyBlock arrays
+    */
+
+    public Material Material;
+    public Camera MainCamera;
+
+    public int GridSize = 32;
+
+    [Header("Atlas")]
+    public Texture2D AtlasTexture;
+    public int AtlasColumns = 4;
+    public int AtlasRows = 4;
+
+    public float ZoomAmplitude = 10f;
+    public float ZoomBase = 20f;
+    public float ZoomSpeed = 1f;
+
+    [Header("Tile Transform")]
+    public float TileScale = 1.0f;
+    public float RotationAmplitude = 30f;
+    public float WaveFrequency = 0.3f;
+    public float TileSpacing = 1.5f;
+
+    private Mesh _quad;
+
+    private List<Matrix4x4> _matrices;
+
+    // per-instance atlas uv transform
+    private Vector4[] _atlasUV;
+
+    private MaterialPropertyBlock _propertyBlock;
+
+    private int _atlasTileCount;
+
+
+    private void Start()
+    {
+        MainCamera.transform.position = new Vector3(0,0,30);
+        MainCamera.transform.rotation = Quaternion.Euler(0,180,0);
+        MainCamera.orthographic = true;
+        MainCamera.orthographicSize = 20;
+
+        _quad = GenerateQuad();
+
+        int count = GridSize * GridSize;
+
+        _matrices = new List<Matrix4x4>(count);
+        _atlasUV = new Vector4[count];
+
+        _propertyBlock = new MaterialPropertyBlock();
+
+        _atlasTileCount = AtlasColumns * AtlasRows;
+
+        for(int i=0;i<count;i++)
+        {
+            _matrices.Add(Matrix4x4.identity);
+
+            int tileIndex = Random.Range(0,_atlasTileCount);
+
+            _atlasUV[i] = ComputeAtlasUV(tileIndex);
+        }
+
+        Debug.Log(
+            $"[TextureAtlasTilesExample]\n" +
+            $"Atlas Grid: {AtlasColumns} x {AtlasRows}\n" +
+            $"Atlas Tiles: {_atlasTileCount}"
+        );
+    }
+
+
+    private void OnGUI()
+    {
+        int tileCount = GridSize * GridSize;
+
+        GUI.Box(new Rect(10,10,240,150),"Renderer Stats");
+
+        GUILayout.BeginArea(new Rect(20,40,220,120));
+
+        GUILayout.Label($"Tiles Rendered: {tileCount}");
+        GUILayout.Label($"Atlas Tiles: {_atlasTileCount}");
+
+        int drawCalls = Mathf.CeilToInt(tileCount / 1023f);
+        GUILayout.Label($"Draw Calls (approx): {drawCalls}");
+
+        GUILayout.Label($"Zoom: {MainCamera.orthographicSize:F2}");
+
+        GUILayout.EndArea();
+    }
+
+
+    private void Update()
+    {
+        float time = Time.time;
+
+        float zoom =
+            ZoomBase +
+            Mathf.Sin(time * ZoomSpeed) * ZoomAmplitude;
+
+        MainCamera.orthographicSize = zoom;
+
+        int index = 0;
+
+        Vector3 scaleVector = Vector3.one * TileScale;
+
+        for(int y=0;y<GridSize;y++)
+        {
+            for(int x=0;x<GridSize;x++)
+            {
+                float wave =
+                    Mathf.Sin(time + x * WaveFrequency + y * WaveFrequency);
+
+                Vector3 position =
+                    new Vector3(
+                        (x - GridSize * 0.5f) * TileSpacing,
+                        (y - GridSize * 0.5f) * TileSpacing,
+                        0
+                    );
+
+                Quaternion rotation =
+                    Quaternion.Euler(0,0,wave * RotationAmplitude);
+
+                _matrices[index] =
+                    Matrix4x4.TRS(position,rotation,scaleVector);
+
+                index++;
+            }
+        }
+
+        _propertyBlock.SetVectorArray("_AtlasUV", _atlasUV);
+        _propertyBlock.SetTexture("_Atlas", AtlasTexture);
+
+        Graphics.DrawMeshInstanced(
+            _quad,
+            0,
+            Material,
+            _matrices,
+            _propertyBlock
+        );
+    }
+
+
+    private Vector4 ComputeAtlasUV(int tileIndex)
+    {
+        float scaleX = 1f / AtlasColumns;
+        float scaleY = 1f / AtlasRows;
+
+        int x = tileIndex % AtlasColumns;
+        int y = tileIndex / AtlasColumns;
+
+        float offsetX = x * scaleX;
+        float offsetY = y * scaleY;
+
+        return new Vector4(scaleX,scaleY,offsetX,offsetY);
+    }
+
+
+    private Mesh GenerateQuad()
+    {
+        Mesh mesh = new Mesh();
+
+        mesh.vertices = new Vector3[]
+        {
+            new Vector3(-0.5f,-0.5f,0),
+            new Vector3(0.5f,-0.5f,0),
+            new Vector3(0.5f,0.5f,0),
+            new Vector3(-0.5f,0.5f,0)
+        };
+
+        mesh.uv = new Vector2[]
+        {
+            new Vector2(0,0),
+            new Vector2(1,0),
+            new Vector2(1,1),
+            new Vector2(0,1)
+        };
+
+        mesh.triangles = new int[]
+        {
+            0,1,2,
+            0,2,3
+        };
+
+        return mesh;
+    }
+}
+
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTilesExample.cs ---
+
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\SimpleBatchExample.cs ---
+
+using UnityEngine;
+using System.Collections.Generic;
+
+/// <summary>
+/// Demonstrates CPU driven instanced rendering using Graphics.DrawMeshInstanced.
+/// A grid of quads is generated and animated every frame.
+/// This example serves as the baseline for the GPU instancing tutorial series.
+/// </summary>
+public class SimpleBatchExample : MonoBehaviour
+{
+    public Material Material;
+    public Camera MainCamera;
+    public int GridSize = 32;
+
+    public float ZoomAmplitude = 10f;
+    public float ZoomBase = 20f;
+    public float ZoomSpeed = 1f;
+
+    private Mesh _quad;
+    private List<Matrix4x4> _matrices = new List<Matrix4x4>();
+
+
+    /// <summary>
+    /// Initializes camera setup, generates mesh, and allocates instance buffers.
+    /// </summary>
+    private void Start()
+    {
+        // Configure camera for a 2D-style orthographic view of the tile grid
+        MainCamera.transform.position = new Vector3(0, 0, 30);
+        MainCamera.transform.rotation = Quaternion.Euler(0, 180, 0);
+        MainCamera.orthographic = true;
+        MainCamera.orthographicSize = 20;
+
+        // Generate the quad mesh used by every tile instance
+        _quad = GenerateQuad();
+
+        int count = GridSize * GridSize;
+
+        // Preallocate transform buffer to avoid runtime allocations
+        _matrices = new List<Matrix4x4>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            _matrices.Add(Matrix4x4.identity);
+        }
+
+        int estimatedDrawCalls = Mathf.CeilToInt(count / 1023f);
+
+        // Print important tutorial diagnostics
+        Debug.Log(
+            "[SimpleBatchExample]\n" +
+            $"Grid Size: {GridSize} x {GridSize}\n" +
+            $"Instance Count: {count}\n" +
+            $"Estimated Draw Calls: {estimatedDrawCalls}\n" +
+            $"Instancing Limit Per Call: 1023\n" +
+            $"Rendering Method: Graphics.DrawMeshInstanced"
+        );
+    }
+
+
+    /// <summary>
+    /// Displays simple runtime statistics.
+    /// </summary>
+    private void OnGUI()
+    {
+        int tileCount = GridSize * GridSize;
+
+        GUI.Box(new Rect(10, 10, 220, 120), "Renderer Stats");
+
+        GUILayout.BeginArea(new Rect(20, 40, 200, 100));
+
+        GUILayout.Label($"Tiles Rendered: {tileCount}");
+        GUILayout.Label($"Grid Size: {GridSize} x {GridSize}");
+        GUILayout.Label($"Instances: {tileCount}");
+
+        // Unity limits DrawMeshInstanced to 1023 instances per draw call
+        int drawCalls = Mathf.CeilToInt(tileCount / 1023f);
+        GUILayout.Label($"Draw Calls (approx): {drawCalls}");
+
+        GUILayout.Label($"Zoom: {MainCamera.orthographicSize:F2}");
+
+        GUILayout.EndArea();
+    }
+
+
+    /// <summary>
+    /// Updates instance transforms and submits them to the GPU.
+    /// </summary>
+    private void Update()
+    {
+        float time = Time.time;
+
+        // Animate camera zoom using a sine wave
+        float zoom = ZoomBase + Mathf.Sin(time * ZoomSpeed) * ZoomAmplitude;
+        MainCamera.orthographicSize = zoom;
+
+        int index = 0;
+
+        // Iterate through the tile grid and update transforms
+        for (int y = 0; y < GridSize; y++)
+        {
+            for (int x = 0; x < GridSize; x++)
+            {
+                // Generate a smooth wave animation across the grid
+                float wave = Mathf.Sin(time + x * 0.3f + y * 0.3f);
+
+                // Compute world position of the tile
+                Vector3 position = new Vector3(
+                    (x - GridSize * 0.5f) * 1.5f,
+                    (y - GridSize * 0.5f) * 1.5f,
+                    0
+                );
+
+                // Rotate tiles based on the wave animation
+                Quaternion rotation = Quaternion.Euler(
+                    0,
+                    0,
+                    wave * 30f
+                );
+
+                // Store transformation matrix for this instance
+                _matrices[index] = Matrix4x4.TRS(position, rotation, Vector3.one);
+
+                index++;
+            }
+        }
+
+        // Submit instance transforms to the GPU.
+        // Unity automatically batches up to 1023 instances per draw call.
+        Graphics.DrawMeshInstanced(
+            _quad,
+            0,
+            Material,
+            _matrices
+        );
+    }
+
+
+    /// <summary>
+    /// Creates a simple quad mesh used for each tile instance.
+    /// </summary>
+    private Mesh GenerateQuad()
+    {
+        Mesh mesh = new Mesh();
+
+        // Define quad vertices centered around origin
+        mesh.vertices = new Vector3[]
+        {
+            new Vector3(-0.5f, -0.5f, 0),
+            new Vector3( 0.5f, -0.5f, 0),
+            new Vector3( 0.5f,  0.5f, 0),
+            new Vector3(-0.5f,  0.5f, 0)
+        };
+
+        // Two triangles forming the quad
+        mesh.triangles = new int[]
+        {
+            0, 1, 2,
+            0, 2, 3
+        };
+
+        return mesh;
+    }
+}
+
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\SimpleBatchExample.cs ---
+
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColor.shader ---
+
+Shader "Tutorial/InstanceColor"
+{
+    Properties
+    {
+        _BaseColor ("Base Color", Color) = (1,1,1,1)
+    }
+
+    SubShader
+    {
+        Tags
+        {
+            "RenderType"="Opaque"
+            "RenderPipeline"="UniversalPipeline"
+        }
+
+        Pass
+        {
+            Name "Forward"
+            Tags { "LightMode"="UniversalForward" }
+
+            HLSLPROGRAM
+
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile_instancing
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
+            {
+                float3 positionOS : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                half4 color : COLOR;
+            };
+
+            UNITY_INSTANCING_BUFFER_START(Props)
+                UNITY_DEFINE_INSTANCED_PROP(float4, _InstanceColor)
+            UNITY_INSTANCING_BUFFER_END(Props)
+
+            Varyings vert(Attributes input)
+            {
+                UNITY_SETUP_INSTANCE_ID(input);
+
+                Varyings output;
+
+                VertexPositionInputs pos =
+                    GetVertexPositionInputs(input.positionOS);
+
+                output.positionCS = pos.positionCS;
+
+                output.color =
+                    UNITY_ACCESS_INSTANCED_PROP(Props, _InstanceColor);
+
+                return output;
+            }
+
+            half4 frag(Varyings input) : SV_Target
+            {
+                return input.color;
+            }
+
+            ENDHLSL
+        }
+    }
+}
+
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColor.shader ---
+
 // --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\MinWhite.shader ---
 
 Shader "Minimal/WhiteInstanced"
@@ -58,6 +625,200 @@ Shader "Minimal/WhiteInstanced"
 }
 
 // --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\MinWhite.shader ---
+
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\03.TextureArrayTiles_README.md ---
+
+# 03.TextureArrayTiles
+
+This step extends GPU instancing by allowing **each instance to choose
+its own texture**.
+
+In the previous step (`02.InstanceColor`) every tile shared the same
+material but could vary in color. Now we replace color variation with
+**texture variation**, allowing each instance to render a different tile
+from a shared texture set.
+
+The technique uses a **Texture2DArray** combined with **per‑instance
+metadata**.
+
+------------------------------------------------------------------------
+
+# Concept
+
+A **Texture2DArray** stores multiple textures inside a single GPU
+resource.
+
+Instead of binding many textures to different materials, we store all
+tile textures in one array:
+
+    Texture2DArray
+    ├─ layer 0 → tile texture
+    ├─ layer 1 → tile texture
+    ├─ layer 2 → tile texture
+    └─ ...
+
+Each instance contains a **tile index** that selects which layer of the
+texture array to sample.
+
+    Instance
+    ├─ Transform Matrix
+    └─ TileIndex → selects texture layer
+
+------------------------------------------------------------------------
+
+# Rendering Pipeline
+
+    CPU
+      generate transforms
+      generate random tile indices
+      build Texture2DArray
+          ↓
+    MaterialPropertyBlock
+          ↓
+    Graphics.DrawMeshInstanced
+          ↓
+    GPU
+      vertex shader reads tile index
+      fragment shader samples Texture2DArray layer
+      tile texture rendered
+
+------------------------------------------------------------------------
+
+# Key Techniques
+
+## Texture2DArray
+
+Instead of switching textures per draw call, all tile textures are
+packed into a single array:
+
+``` csharp
+Texture2DArray tileArray =
+    new Texture2DArray(width, height, layers, format, false);
+```
+
+Each texture is copied into one layer of the array.
+
+This allows the GPU to sample different textures **without breaking
+batching**.
+
+------------------------------------------------------------------------
+
+## Per‑Instance Tile Index
+
+Each instance receives a tile index:
+
+    0 → first tile texture
+    1 → second tile texture
+    2 → third tile texture
+    ...
+
+The CPU sends this array to the shader:
+
+``` csharp
+_propertyBlock.SetFloatArray("_TileIndex", _tileIndices);
+```
+
+------------------------------------------------------------------------
+
+## URP Texture Sampling
+
+URP shaders use special macros for texture arrays:
+
+``` hlsl
+TEXTURE2D_ARRAY(_Tiles);
+SAMPLER(sampler_Tiles);
+```
+
+Sampling a tile texture:
+
+``` hlsl
+SAMPLE_TEXTURE2D_ARRAY(_Tiles, sampler_Tiles, uv, tileIndex);
+```
+
+These macros ensure correct compilation across graphics APIs.
+
+------------------------------------------------------------------------
+
+# Shader Flow
+
+    Vertex Shader
+        read instance tile index
+            ↓
+        pass UV and tileIndex
+            ↓
+    Fragment Shader
+        sample texture array layer
+            ↓
+        output tile color
+
+------------------------------------------------------------------------
+
+# Result
+
+The grid now displays:
+
+    • same mesh
+    • same material
+    • different texture per instance
+    • still rendered using GPU instancing
+
+This is a fundamental technique used by:
+
+    tilemap renderers
+    voxel engines
+    procedural terrain
+    GPU particle systems
+
+------------------------------------------------------------------------
+
+# What This Step Teaches
+
+    • Texture2DArray creation
+    • GPU texture arrays
+    • per‑instance metadata
+    • sampling array textures in shaders
+    • maintaining batching with many textures
+
+These concepts are important for the next stage, where instance data
+will be moved entirely to **GPU buffers**.
+
+------------------------------------------------------------------------
+
+# Next Step
+
+    04.StructuredInstanceBuffer
+
+In that step we will remove `MaterialPropertyBlock` and Unity instancing
+macros, and send instance data directly to the GPU using **structured
+buffers**.
+
+
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\03.TextureArrayTiles_README.md ---
+
+// --- Start File: todo.md ---
+
+## TODOs & Ideas
+- Basic GPU Instancing Examples
+  - **Tile scale parameter**. Expose a global `TileScale` in the inspector to control tile size. Ranomdize scale per tile
+  - **Tile spacing control**.  Allow changing spacing between tiles without modifying code.
+  - **Rotation toggle**. Add a checkbox to enable/disable the wave rotation animation. Or better choose diffrent patterns for a wave form (including NONE)
+  - **Static mode**. Option to disable animation completely to measure baseline performance.
+  - **Color palette mode**. Choose colors from a predefined palette instead of random colors. Each tiles could have a colorscheme (emulation of materials inside pixels color, (sand-yellow, grass green)
+  - **Gradient coloring**. Color tiles based on their grid position. Nice effect
+  - **Color shift**. Slowly shift instance colors over time. Or change it using color erp. Nice effect
+  - **Height‑based coloring**. Use the wave value to change color brightness.
+  - **Deterministic tile layout**. Use a seeded random generator so the layout stays the same every run. Throw a dice and remeber the seed to have entire pattern as asset. Patches on top
+  - **Tile index animation**. Randomly change tile index every few seconds.
+  - **Grid pattern modes**. Checkerboard/Stripes/Random noise/cellar automata
+  - **Runtime texture array rebuild**. Allow swapping tile sets at runtime.
+  - **Atlas debug overlay**. Draw tile borders to visualize atlas regions.
+  - **Tile highlight**. Highlight hovered tiles using instance metadata.
+  - **Animated atlas frames**. Cycle atlas regions to simulate sprite animation.
+  - **Random tile rotation** Randomly rotate tiles while still using the atlas.
+  - **Atlas grid auto detection** Compute rows/columns automatically from texture size and tile size.
+
+
+// --- End File: todo.md ---
 
 // --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\TextureArrayTilesExample.cs ---
 
@@ -318,27 +1079,237 @@ public class TextureArrayTilesExample : MonoBehaviour
 
 // --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\TextureArrayTilesExample.cs ---
 
-// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTilesExample.cs ---
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\02.InstanceColor_README.md ---
 
-using UnityEngine;
+# 02.InstanceColor
 
-public class TextureAtlasTilesExample : MonoBehaviour
-{
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        
-    }
+This step introduces **per‑instance data** in GPU instancing.
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
-}
+In the previous example (`01.BatchForEach1024Tile`) every tile shared
+the same material and appearance.\
+Here we extend the renderer so **each instance can have its own color**
+while still being rendered in batches.
+
+The goal is to demonstrate how **custom instance properties** are passed
+from the CPU to the GPU.
+
+------------------------------------------------------------------------
+
+# Concept
+
+GPU instancing allows many objects to be rendered using the same mesh
+and material.
+
+Each instance already receives its own transform matrix:
+
+    Matrix4x4 → object position / rotation / scale
+
+In this step we add a second per‑instance property:
+
+    Color → visual variation per tile
+
+So the instance data becomes:
+
+    Instance
+    ├─ Transform Matrix
+    └─ Color
+
+------------------------------------------------------------------------
+
+# Rendering Pipeline
+
+    CPU
+      generate transforms
+      generate random colors
+      store instance data
+          ↓
+    MaterialPropertyBlock
+          ↓
+    Graphics.DrawMeshInstanced
+          ↓
+    GPU
+      vertex shader reads instance color
+      color interpolated to fragment shader
+      fragment shader outputs color
+
+------------------------------------------------------------------------
+
+# Key Techniques
+
+## MaterialPropertyBlock
+
+Unity uses `MaterialPropertyBlock` to send per‑instance arrays to the
+GPU.
+
+Example:
+
+``` csharp
+_propertyBlock.SetVectorArray("_InstanceColor", _colors);
+```
+
+This allows each instance to access its own color inside the shader.
+
+------------------------------------------------------------------------
+
+## Instancing Shader Macros
+
+The shader declares per‑instance properties using Unity instancing
+macros:
+
+``` hlsl
+UNITY_INSTANCING_BUFFER_START(Props)
+    UNITY_DEFINE_INSTANCED_PROP(float4, _InstanceColor)
+UNITY_INSTANCING_BUFFER_END(Props)
+```
+
+Each instance can then access its value:
+
+``` hlsl
+UNITY_ACCESS_INSTANCED_PROP(Props, _InstanceColor)
+```
+
+------------------------------------------------------------------------
+
+# Vertex Shader Flow
+
+    instanceID
+        ↓
+    read instance color
+        ↓
+    apply object transform
+        ↓
+    pass color to fragment stage
+
+Because the fragment shader only receives interpolated color, we **do
+not need** `UNITY_TRANSFER_INSTANCE_ID`.
+
+------------------------------------------------------------------------
+
+# Result
+
+The rendered grid now shows:
+
+    • same mesh
+    • same material
+    • different color per instance
+    • still rendered with GPU instancing
+
+This demonstrates how **instance metadata** can control appearance
+without increasing draw calls.
+
+------------------------------------------------------------------------
+
+# What This Step Teaches
+
+    • passing per‑instance data to shaders
+    • using MaterialPropertyBlock
+    • Unity instancing macros
+    • vertex → fragment interpolation
+
+These concepts are essential for the next step, where instance data will
+be used to select textures from a **texture array**.
+
+------------------------------------------------------------------------
+
+# Next Step
+
+    03.TextureArrayTiles
+
+Instead of colors, each instance will contain:
+
+    tileIndex
+
+which selects a texture from a **Texture2DArray**, enabling a fully
+GPU‑instanced tile renderer.
 
 
-// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\TextureAtlasTilesExample.cs ---
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\02.InstanceColor_README.md ---
+
+// --- Start File: readme.md ---
+
+# GPU Instancing Tutorial Series
+
+This repository contains a **step‑by‑step tutorial series for GPU
+instancing in Unity**.
+
+The goal is to **gradually increase complexity** while building a deeper
+understanding of modern GPU‑driven rendering techniques.
+
+Each phase introduces **one major concept at a time**, starting from
+simple CPU‑driven instancing and progressing toward fully GPU‑driven
+rendering pipelines using compute shaders and indirect drawing.
+
+The structure is intentionally organized so that each lesson is **small,
+isolated, and easy to understand**, while still building toward a
+scalable rendering architecture.
+
+------------------------------------------------------------------------
+
+# Directory Structure
+
+    01.BasicInstances
+    │
+    ├─ 01.BatchForEach1024Tile
+    ├─ 02.InstanceColor
+    ├─ 03.TextureArrayTiles
+    └─ 04.TextureAtlasTiles
+
+
+    02.GPUInstanceData
+    │
+    ├─ 01.StructuredInstanceBuffer
+    └─ 02.DrawMeshInstancedIndirect
+
+
+    03.GPUAnimationAndProcedural
+    │
+    ├─ 01.GPUAnimatedTiles
+    └─ 02.GPUProceduralTiles
+
+
+    04.ComputeDrivenRendering
+    │
+    ├─ 01.ComputeGeneratedTiles
+    ├─ 02.GPUCulling
+    └─ 03.MassiveTileWorlds
+
+
+    05.AdvancedRendering
+    │
+    ├─ 01.SDFTiles
+    └─ 02.GPUDrivenTilemap
+
+------------------------------------------------------------------------
+
+# Tutorial Stages
+
+### 01.BasicInstances
+
+Introduction to GPU instancing using Unity's built‑in APIs. Examples
+show CPU‑generated transforms and basic instance variation.
+
+### 02.GPUInstanceData
+
+Moves instance data into GPU buffers and introduces indirect drawing to
+remove Unity's instancing limits.
+
+### 03.GPUAnimationAndProcedural
+
+Demonstrates how instance behavior can be driven entirely on the GPU
+using shader logic and deterministic procedural generation.
+
+### 04.ComputeDrivenRendering
+
+Introduces compute shaders to generate and filter instance data,
+enabling large‑scale rendering with GPU culling.
+
+### 05.AdvancedRendering
+
+Explores more advanced rendering techniques such as SDF tiles and a
+fully GPU‑driven tilemap architecture.
+
+
+// --- End File: readme.md ---
 
 // --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColorExample.cs ---
 
@@ -502,80 +1473,186 @@ public class InstanceColorExample : MonoBehaviour
 
 // --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColorExample.cs ---
 
-// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColor.shader ---
+// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\04.TextureAtlasTiles_README.md ---
 
-Shader "Tutorial/InstanceColor"
-{
-    Properties
-    {
-        _BaseColor ("Base Color", Color) = (1,1,1,1)
-    }
+# 04.TextureAtlasTiles
 
-    SubShader
-    {
-        Tags
-        {
-            "RenderType"="Opaque"
-            "RenderPipeline"="UniversalPipeline"
-        }
+This step introduces GPU instancing using a **texture atlas**.
 
-        Pass
-        {
-            Name "Forward"
-            Tags { "LightMode"="UniversalForward" }
+Instead of storing tiles inside a `Texture2DArray`, multiple tile
+textures are packed into a **single large texture (atlas)**.\
+Each instance selects its tile by **remapping its UV coordinates** to a
+region of the atlas.
 
-            HLSLPROGRAM
+This allows thousands of tiles to be rendered with:
 
-            #pragma vertex vert
-            #pragma fragment frag
-            #pragma multi_compile_instancing
+-   **one mesh**
+-   **one material**
+-   **one texture**
+-   **a small amount of per‑instance metadata**
 
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+All tiles can still be rendered in large **instanced batches**.
 
-            struct Attributes
-            {
-                float3 positionOS : POSITION;
-                UNITY_VERTEX_INPUT_INSTANCE_ID
-            };
+------------------------------------------------------------------------
 
-            struct Varyings
-            {
-                float4 positionCS : SV_POSITION;
-                half4 color : COLOR;
-            };
+# Concept
 
-            UNITY_INSTANCING_BUFFER_START(Props)
-                UNITY_DEFINE_INSTANCED_PROP(float4, _InstanceColor)
-            UNITY_INSTANCING_BUFFER_END(Props)
+Texture Atlas
 
-            Varyings vert(Attributes input)
-            {
-                UNITY_SETUP_INSTANCE_ID(input);
+    +----+----+----+
+    | T0 | T1 | T2 |
+    +----+----+----+
+    | T3 | T4 | T5 |
+    +----+----+----+
 
-                Varyings output;
+Each tile occupies a rectangular region inside the atlas.
 
-                VertexPositionInputs pos =
-                    GetVertexPositionInputs(input.positionOS);
+Every instance stores a UV transform describing that region.
 
-                output.positionCS = pos.positionCS;
+    Instance
+     ├ Transform Matrix
+     └ AtlasUV (scaleX, scaleY, offsetX, offsetY)
 
-                output.color =
-                    UNITY_ACCESS_INSTANCED_PROP(Props, _InstanceColor);
+Where:
 
-                return output;
-            }
+    scale  = size of the tile inside the atlas
+    offset = position of the tile inside the atlas
 
-            half4 frag(Varyings input) : SV_Target
-            {
-                return input.color;
-            }
+------------------------------------------------------------------------
 
-            ENDHLSL
-        }
-    }
-}
+# Rendering Pipeline
 
-// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\InstanceColor.shader ---
+CPU
+
+    generate transforms
+    generate atlasUV per instance
+    upload arrays via MaterialPropertyBlock
+    submit draw call with Graphics.DrawMeshInstanced
+
+GPU
+
+    vertex shader
+        read atlasUV for this instance
+        remap mesh UV coordinates
+
+    fragment shader
+        sample atlas texture
+        output tile color
+
+------------------------------------------------------------------------
+
+# Shader Architecture
+
+The shader uses **URP instancing macros** to read per‑instance data.
+
+### 1. Instance property declaration
+
+    UNITY_INSTANCING_BUFFER_START(Props)
+        UNITY_DEFINE_INSTANCED_PROP(float4, _AtlasUV)
+    UNITY_INSTANCING_BUFFER_END(Props)
+
+Each instance receives a **UV transform**.
+
+### 2. Vertex shader
+
+The vertex shader remaps the UV coordinates:
+
+    atlas = UNITY_ACCESS_INSTANCED_PROP(Props,_AtlasUV)
+
+    uv = input.uv * atlas.xy + atlas.zw
+
+Where:
+
+    atlas.xy = scale
+    atlas.zw = offset
+
+### 3. Fragment shader
+
+The fragment shader samples the atlas:
+
+    color = SAMPLE_TEXTURE2D(_Atlas, sampler_Atlas, uv)
+
+The GPU therefore renders **different tiles from the same texture**
+without breaking batching.
+
+------------------------------------------------------------------------
+
+# Why Atlas‑Style Rendering Is Useful
+
+Texture atlases are widely used in real‑time rendering because they
+allow many visual variations while still keeping rendering extremely
+efficient.
+
+Benefits:
+
+-   **Single texture binding** --- avoids expensive texture switches.
+-   **Perfect batching** --- all instances share one material.
+-   **Artist‑friendly workflow** --- artists can pack tiles or sprites
+    into a single image.
+-   **Memory efficient** --- fewer GPU resources are required.
+-   **Flexible layouts** --- tiles do not have to be identical sizes.
+
+------------------------------------------------------------------------
+
+# Example Uses In Games
+
+Texture atlas rendering appears in many real‑world systems.
+
+Examples:
+
+-   **Tilemap worlds** --- thousands of terrain tiles (grass, rock,
+    sand) sampled from one atlas.
+-   **Voxel engines** --- block faces referencing different atlas
+    regions (stone, dirt, ore).
+-   **2D sprite crowds** --- hundreds of characters sharing one sprite
+    sheet.
+-   **Particle systems** --- animated particles using atlas frames.
+-   **UI icon libraries** --- many small icons packed into a single
+    texture.
+-   **Procedural worlds** --- GPU‑generated tiles selecting atlas
+    regions dynamically.
+
+Even very large environments can often be rendered with **only one or
+two textures**.
+
+------------------------------------------------------------------------
+
+# What This Step Teaches
+
+-   atlas‑based texture sampling
+-   per‑instance UV transforms
+-   GPU instancing with atlas textures
+-   how shaders remap UV coordinates per instance
+
+These techniques are widely used in **tile engines, voxel renderers, and
+large sprite systems**.
+
+------------------------------------------------------------------------
+
+# Next Step
+
+    02.GPUInstanceData
+
+
+The next stage removes `MaterialPropertyBlock` arrays and moves
+instance data into **GPU structured buffers**, allowing the renderer to scale
+far beyond the `1023` instance limit of `DrawMeshInstanced`.
+
+In the current approach the CPU must upload per-instance data (such as
+transforms or metadata arrays) to the GPU every frame. As instance counts
+grow, this becomes increasingly expensive in both **CPU time** and
+**memory bandwidth**.
+
+By storing instance data directly in **GPU buffers**, the renderer can:
+
+- eliminate most per-frame CPU → GPU data uploads
+- reduce CPU workload when rendering large instance counts
+- allow the GPU to read instance data directly from buffers
+- enable more advanced techniques such as **indirect drawing and GPU-driven rendering**
+
+This transition is a key step toward building a **fully GPU-driven renderer**.
+
+// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\04.TextureAtlasTiles\04.TextureAtlasTiles_README.md ---
 
 // --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\TextureArrayTiles.shader ---
 
@@ -663,490 +1740,6 @@ Shader "Tutorial/TextureArrayTiles"
 }
 
 // --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\TextureArrayTiles.shader ---
-
-// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\02.InstanceColor_README.md ---
-
-# 02.InstanceColor
-
-This step introduces **per‑instance data** in GPU instancing.
-
-In the previous example (`01.BatchForEach1024Tile`) every tile shared
-the same material and appearance.\
-Here we extend the renderer so **each instance can have its own color**
-while still being rendered in batches.
-
-The goal is to demonstrate how **custom instance properties** are passed
-from the CPU to the GPU.
-
-------------------------------------------------------------------------
-
-# Concept
-
-GPU instancing allows many objects to be rendered using the same mesh
-and material.
-
-Each instance already receives its own transform matrix:
-
-    Matrix4x4 → object position / rotation / scale
-
-In this step we add a second per‑instance property:
-
-    Color → visual variation per tile
-
-So the instance data becomes:
-
-    Instance
-    ├─ Transform Matrix
-    └─ Color
-
-------------------------------------------------------------------------
-
-# Rendering Pipeline
-
-    CPU
-      generate transforms
-      generate random colors
-      store instance data
-          ↓
-    MaterialPropertyBlock
-          ↓
-    Graphics.DrawMeshInstanced
-          ↓
-    GPU
-      vertex shader reads instance color
-      color interpolated to fragment shader
-      fragment shader outputs color
-
-------------------------------------------------------------------------
-
-# Key Techniques
-
-## MaterialPropertyBlock
-
-Unity uses `MaterialPropertyBlock` to send per‑instance arrays to the
-GPU.
-
-Example:
-
-``` csharp
-_propertyBlock.SetVectorArray("_InstanceColor", _colors);
-```
-
-This allows each instance to access its own color inside the shader.
-
-------------------------------------------------------------------------
-
-## Instancing Shader Macros
-
-The shader declares per‑instance properties using Unity instancing
-macros:
-
-``` hlsl
-UNITY_INSTANCING_BUFFER_START(Props)
-    UNITY_DEFINE_INSTANCED_PROP(float4, _InstanceColor)
-UNITY_INSTANCING_BUFFER_END(Props)
-```
-
-Each instance can then access its value:
-
-``` hlsl
-UNITY_ACCESS_INSTANCED_PROP(Props, _InstanceColor)
-```
-
-------------------------------------------------------------------------
-
-# Vertex Shader Flow
-
-    instanceID
-        ↓
-    read instance color
-        ↓
-    apply object transform
-        ↓
-    pass color to fragment stage
-
-Because the fragment shader only receives interpolated color, we **do
-not need** `UNITY_TRANSFER_INSTANCE_ID`.
-
-------------------------------------------------------------------------
-
-# Result
-
-The rendered grid now shows:
-
-    • same mesh
-    • same material
-    • different color per instance
-    • still rendered with GPU instancing
-
-This demonstrates how **instance metadata** can control appearance
-without increasing draw calls.
-
-------------------------------------------------------------------------
-
-# What This Step Teaches
-
-    • passing per‑instance data to shaders
-    • using MaterialPropertyBlock
-    • Unity instancing macros
-    • vertex → fragment interpolation
-
-These concepts are essential for the next step, where instance data will
-be used to select textures from a **texture array**.
-
-------------------------------------------------------------------------
-
-# Next Step
-
-    03.TextureArrayTiles
-
-Instead of colors, each instance will contain:
-
-    tileIndex
-
-which selects a texture from a **Texture2DArray**, enabling a fully
-GPU‑instanced tile renderer.
-
-
-// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\02.InstanceColor\02.InstanceColor_README.md ---
-
-// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\03.TextureArrayTiles_README.md ---
-
-# 03.TextureArrayTiles
-
-This step extends GPU instancing by allowing **each instance to choose
-its own texture**.
-
-In the previous step (`02.InstanceColor`) every tile shared the same
-material but could vary in color. Now we replace color variation with
-**texture variation**, allowing each instance to render a different tile
-from a shared texture set.
-
-The technique uses a **Texture2DArray** combined with **per‑instance
-metadata**.
-
-------------------------------------------------------------------------
-
-# Concept
-
-A **Texture2DArray** stores multiple textures inside a single GPU
-resource.
-
-Instead of binding many textures to different materials, we store all
-tile textures in one array:
-
-    Texture2DArray
-    ├─ layer 0 → tile texture
-    ├─ layer 1 → tile texture
-    ├─ layer 2 → tile texture
-    └─ ...
-
-Each instance contains a **tile index** that selects which layer of the
-texture array to sample.
-
-    Instance
-    ├─ Transform Matrix
-    └─ TileIndex → selects texture layer
-
-------------------------------------------------------------------------
-
-# Rendering Pipeline
-
-    CPU
-      generate transforms
-      generate random tile indices
-      build Texture2DArray
-          ↓
-    MaterialPropertyBlock
-          ↓
-    Graphics.DrawMeshInstanced
-          ↓
-    GPU
-      vertex shader reads tile index
-      fragment shader samples Texture2DArray layer
-      tile texture rendered
-
-------------------------------------------------------------------------
-
-# Key Techniques
-
-## Texture2DArray
-
-Instead of switching textures per draw call, all tile textures are
-packed into a single array:
-
-``` csharp
-Texture2DArray tileArray =
-    new Texture2DArray(width, height, layers, format, false);
-```
-
-Each texture is copied into one layer of the array.
-
-This allows the GPU to sample different textures **without breaking
-batching**.
-
-------------------------------------------------------------------------
-
-## Per‑Instance Tile Index
-
-Each instance receives a tile index:
-
-    0 → first tile texture
-    1 → second tile texture
-    2 → third tile texture
-    ...
-
-The CPU sends this array to the shader:
-
-``` csharp
-_propertyBlock.SetFloatArray("_TileIndex", _tileIndices);
-```
-
-------------------------------------------------------------------------
-
-## URP Texture Sampling
-
-URP shaders use special macros for texture arrays:
-
-``` hlsl
-TEXTURE2D_ARRAY(_Tiles);
-SAMPLER(sampler_Tiles);
-```
-
-Sampling a tile texture:
-
-``` hlsl
-SAMPLE_TEXTURE2D_ARRAY(_Tiles, sampler_Tiles, uv, tileIndex);
-```
-
-These macros ensure correct compilation across graphics APIs.
-
-------------------------------------------------------------------------
-
-# Shader Flow
-
-    Vertex Shader
-        read instance tile index
-            ↓
-        pass UV and tileIndex
-            ↓
-    Fragment Shader
-        sample texture array layer
-            ↓
-        output tile color
-
-------------------------------------------------------------------------
-
-# Result
-
-The grid now displays:
-
-    • same mesh
-    • same material
-    • different texture per instance
-    • still rendered using GPU instancing
-
-This is a fundamental technique used by:
-
-    tilemap renderers
-    voxel engines
-    procedural terrain
-    GPU particle systems
-
-------------------------------------------------------------------------
-
-# What This Step Teaches
-
-    • Texture2DArray creation
-    • GPU texture arrays
-    • per‑instance metadata
-    • sampling array textures in shaders
-    • maintaining batching with many textures
-
-These concepts are important for the next stage, where instance data
-will be moved entirely to **GPU buffers**.
-
-------------------------------------------------------------------------
-
-# Next Step
-
-    04.StructuredInstanceBuffer
-
-In that step we will remove `MaterialPropertyBlock` and Unity instancing
-macros, and send instance data directly to the GPU using **structured
-buffers**.
-
-
-// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\03.TextureArrayTiles\03.TextureArrayTiles_README.md ---
-
-// --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\SimpleBatchExample.cs ---
-
-using UnityEngine;
-using System.Collections.Generic;
-
-/// <summary>
-/// Demonstrates CPU driven instanced rendering using Graphics.DrawMeshInstanced.
-/// A grid of quads is generated and animated every frame.
-/// This example serves as the baseline for the GPU instancing tutorial series.
-/// </summary>
-public class SimpleBatchExample : MonoBehaviour
-{
-    public Material Material;
-    public Camera MainCamera;
-    public int GridSize = 32;
-
-    public float ZoomAmplitude = 10f;
-    public float ZoomBase = 20f;
-    public float ZoomSpeed = 1f;
-
-    private Mesh _quad;
-    private List<Matrix4x4> _matrices = new List<Matrix4x4>();
-
-
-    /// <summary>
-    /// Initializes camera setup, generates mesh, and allocates instance buffers.
-    /// </summary>
-    private void Start()
-    {
-        // Configure camera for a 2D-style orthographic view of the tile grid
-        MainCamera.transform.position = new Vector3(0, 0, 30);
-        MainCamera.transform.rotation = Quaternion.Euler(0, 180, 0);
-        MainCamera.orthographic = true;
-        MainCamera.orthographicSize = 20;
-
-        // Generate the quad mesh used by every tile instance
-        _quad = GenerateQuad();
-
-        int count = GridSize * GridSize;
-
-        // Preallocate transform buffer to avoid runtime allocations
-        _matrices = new List<Matrix4x4>(count);
-
-        for (int i = 0; i < count; i++)
-        {
-            _matrices.Add(Matrix4x4.identity);
-        }
-
-        int estimatedDrawCalls = Mathf.CeilToInt(count / 1023f);
-
-        // Print important tutorial diagnostics
-        Debug.Log(
-            "[SimpleBatchExample]\n" +
-            $"Grid Size: {GridSize} x {GridSize}\n" +
-            $"Instance Count: {count}\n" +
-            $"Estimated Draw Calls: {estimatedDrawCalls}\n" +
-            $"Instancing Limit Per Call: 1023\n" +
-            $"Rendering Method: Graphics.DrawMeshInstanced"
-        );
-    }
-
-
-    /// <summary>
-    /// Displays simple runtime statistics.
-    /// </summary>
-    private void OnGUI()
-    {
-        int tileCount = GridSize * GridSize;
-
-        GUI.Box(new Rect(10, 10, 220, 120), "Renderer Stats");
-
-        GUILayout.BeginArea(new Rect(20, 40, 200, 100));
-
-        GUILayout.Label($"Tiles Rendered: {tileCount}");
-        GUILayout.Label($"Grid Size: {GridSize} x {GridSize}");
-        GUILayout.Label($"Instances: {tileCount}");
-
-        // Unity limits DrawMeshInstanced to 1023 instances per draw call
-        int drawCalls = Mathf.CeilToInt(tileCount / 1023f);
-        GUILayout.Label($"Draw Calls (approx): {drawCalls}");
-
-        GUILayout.Label($"Zoom: {MainCamera.orthographicSize:F2}");
-
-        GUILayout.EndArea();
-    }
-
-
-    /// <summary>
-    /// Updates instance transforms and submits them to the GPU.
-    /// </summary>
-    private void Update()
-    {
-        float time = Time.time;
-
-        // Animate camera zoom using a sine wave
-        float zoom = ZoomBase + Mathf.Sin(time * ZoomSpeed) * ZoomAmplitude;
-        MainCamera.orthographicSize = zoom;
-
-        int index = 0;
-
-        // Iterate through the tile grid and update transforms
-        for (int y = 0; y < GridSize; y++)
-        {
-            for (int x = 0; x < GridSize; x++)
-            {
-                // Generate a smooth wave animation across the grid
-                float wave = Mathf.Sin(time + x * 0.3f + y * 0.3f);
-
-                // Compute world position of the tile
-                Vector3 position = new Vector3(
-                    (x - GridSize * 0.5f) * 1.5f,
-                    (y - GridSize * 0.5f) * 1.5f,
-                    0
-                );
-
-                // Rotate tiles based on the wave animation
-                Quaternion rotation = Quaternion.Euler(
-                    0,
-                    0,
-                    wave * 30f
-                );
-
-                // Store transformation matrix for this instance
-                _matrices[index] = Matrix4x4.TRS(position, rotation, Vector3.one);
-
-                index++;
-            }
-        }
-
-        // Submit instance transforms to the GPU.
-        // Unity automatically batches up to 1023 instances per draw call.
-        Graphics.DrawMeshInstanced(
-            _quad,
-            0,
-            Material,
-            _matrices
-        );
-    }
-
-
-    /// <summary>
-    /// Creates a simple quad mesh used for each tile instance.
-    /// </summary>
-    private Mesh GenerateQuad()
-    {
-        Mesh mesh = new Mesh();
-
-        // Define quad vertices centered around origin
-        mesh.vertices = new Vector3[]
-        {
-            new Vector3(-0.5f, -0.5f, 0),
-            new Vector3( 0.5f, -0.5f, 0),
-            new Vector3( 0.5f,  0.5f, 0),
-            new Vector3(-0.5f,  0.5f, 0)
-        };
-
-        // Two triangles forming the quad
-        mesh.triangles = new int[]
-        {
-            0, 1, 2,
-            0, 2, 3
-        };
-
-        return mesh;
-    }
-}
-
-// --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\SimpleBatchExample.cs ---
 
 // --- Start File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\01.BatchForEach1024_README.md ---
 
@@ -1268,92 +1861,6 @@ which forces batching.
 ![performance.jpg](performance.jpg)
 
 // --- End File: Unity\gpu-rendering\Assets\01.BasicInstances\01.BatchForEach1024Tile\01.BatchForEach1024_README.md ---
-
-// --- Start File: readme.md ---
-
-# GPU Instancing Tutorial Series
-
-This repository contains a **step‑by‑step tutorial series for GPU
-instancing in Unity**.
-
-The goal is to **gradually increase complexity** while building a deeper
-understanding of modern GPU‑driven rendering techniques.
-
-Each phase introduces **one major concept at a time**, starting from
-simple CPU‑driven instancing and progressing toward fully GPU‑driven
-rendering pipelines using compute shaders and indirect drawing.
-
-The structure is intentionally organized so that each lesson is **small,
-isolated, and easy to understand**, while still building toward a
-scalable rendering architecture.
-
-------------------------------------------------------------------------
-
-# Directory Structure
-
-    01.BasicInstances
-    │
-    ├─ 01.BatchForEach1024Tile
-    ├─ 02.InstanceColor
-    ├─ 03.TextureArrayTiles
-    └─ 04.TextureAtlasTiles
-
-
-    02.GPUInstanceData
-    │
-    ├─ 01.StructuredInstanceBuffer
-    └─ 02.DrawMeshInstancedIndirect
-
-
-    03.GPUAnimationAndProcedural
-    │
-    ├─ 01.GPUAnimatedTiles
-    └─ 02.GPUProceduralTiles
-
-
-    04.ComputeDrivenRendering
-    │
-    ├─ 01.ComputeGeneratedTiles
-    ├─ 02.GPUCulling
-    └─ 03.MassiveTileWorlds
-
-
-    05.AdvancedRendering
-    │
-    ├─ 01.SDFTiles
-    └─ 02.GPUDrivenTilemap
-
-------------------------------------------------------------------------
-
-# Tutorial Stages
-
-### 01.BasicInstances
-
-Introduction to GPU instancing using Unity's built‑in APIs. Examples
-show CPU‑generated transforms and basic instance variation.
-
-### 02.GPUInstanceData
-
-Moves instance data into GPU buffers and introduces indirect drawing to
-remove Unity's instancing limits.
-
-### 03.GPUAnimationAndProcedural
-
-Demonstrates how instance behavior can be driven entirely on the GPU
-using shader logic and deterministic procedural generation.
-
-### 04.ComputeDrivenRendering
-
-Introduces compute shaders to generate and filter instance data,
-enabling large‑scale rendering with GPU culling.
-
-### 05.AdvancedRendering
-
-Explores more advanced rendering techniques such as SDF tiles and a
-fully GPU‑driven tilemap architecture.
-
-
-// --- End File: readme.md ---
 
 
 --------------------------------------------------
