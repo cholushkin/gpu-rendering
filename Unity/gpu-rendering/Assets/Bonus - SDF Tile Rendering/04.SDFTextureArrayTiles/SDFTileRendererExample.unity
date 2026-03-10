@@ -162,7 +162,7 @@ GameObject:
   - component: {fileID: 839271637}
   - component: {fileID: 839271638}
   m_Layer: 0
-  m_Name: SDFCommandInterpreterExample
+  m_Name: SDFTileRendererExample
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -192,13 +192,15 @@ MonoBehaviour:
   m_GameObject: {fileID: 839271635}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bd4e310c6d29cdf40a77568470d77406, type: 3}
+  m_Script: {fileID: 11500000, guid: 8e9ac5c8c89e606419ad4c93a4a83453, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SDFCommandInterpreterExample
-  Interpreter: {fileID: 7200000, guid: 8e7e6ec0823c8ed4c8e45fc772f74078, type: 3}
-  PreviewMaterial: {fileID: 2100000, guid: e5d115352464c8244be2edb7bb90cfc2, type: 2}
+  m_EditorClassIdentifier: Assembly-CSharp::SDFTileRendererExample
+  Generator: {fileID: 7200000, guid: 1e398825c00707441bd93ac78fe8a6a0, type: 3}
+  TileMaterial: {fileID: 2100000, guid: 04b310a48a26b7343a4ec53391809cdf, type: 2}
   MainCamera: {fileID: 1766275774}
   Resolution: 128
+  TileCount: 4
+  GridSize: 16
 --- !u!1 &1766275770
 GameObject:
   m_ObjectHideFlags: 0
