@@ -197,7 +197,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TextureArrayTilesExample
   Material: {fileID: 2100000, guid: a468a81bd9bff764dbf8eaceca898400, type: 2}
   MainCamera: {fileID: 1766275774}
-  GridSize: 32
+  GridSize: 64
   TileTextures:
   - {fileID: 2800000, guid: c698be4b18c38494d8f8800b75c1c5eb, type: 3}
   - {fileID: 2800000, guid: e9bfee6604be95940a7c5d03f583e099, type: 3}

@@ -162,7 +162,7 @@ GameObject:
   - component: {fileID: 839271637}
   - component: {fileID: 839271638}
   m_Layer: 0
-  m_Name: TextureAtlasTiles
+  m_Name: StructuredInstanceBufferExample
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -192,21 +192,23 @@ MonoBehaviour:
   m_GameObject: {fileID: 839271635}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d8b6b1c0450459f40adfd6940cd0b088, type: 3}
+  m_Script: {fileID: 11500000, guid: 7c3d3fd8d0b042f4aabd78ead7504ca3, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TextureAtlasTilesExample
-  Material: {fileID: 2100000, guid: 1f1e8f153de0a1f4cb2c6210471b5139, type: 2}
+  m_EditorClassIdentifier: Assembly-CSharp::StructuredInstanceBufferExample
+  Material: {fileID: 2100000, guid: 3744cdbf56c360c4594a643ca51e8421, type: 2}
   MainCamera: {fileID: 1766275774}
-  GridSize: 32
-  AtlasTexture: {fileID: 2800000, guid: e59332b8e94cbb54089554741e372ba3, type: 3}
-  AtlasColumns: 4
-  AtlasRows: 4
+  GridSize: 64
+  TileTextures:
+  - {fileID: 2800000, guid: c698be4b18c38494d8f8800b75c1c5eb, type: 3}
+  - {fileID: 2800000, guid: e9bfee6604be95940a7c5d03f583e099, type: 3}
+  - {fileID: 2800000, guid: 36c4126259aafca449d0dfca3bb49a5a, type: 3}
+  - {fileID: 2800000, guid: 87f03f9bdc4f38b4fa48edc126957134, type: 3}
+  - {fileID: 2800000, guid: d44e5e33d2f757c40bbbe0e23b21b8c2, type: 3}
+  - {fileID: 2800000, guid: f86c5231f80a5d64aaa69165f96ded46, type: 3}
   ZoomAmplitude: 10
-  ZoomBase: 15
-  ZoomSpeed: 0.25
-  TileScale: 1.5
-  RotationAmplitude: 30
-  WaveFrequency: 0.3
+  ZoomBase: 20
+  ZoomSpeed: 1
+  TileScale: 1
   TileSpacing: 1.5
 --- !u!1 &1766275770
 GameObject:
