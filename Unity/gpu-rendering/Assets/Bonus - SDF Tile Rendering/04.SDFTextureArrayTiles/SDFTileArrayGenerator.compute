@@ -1,0 +1,115 @@
+#pragma kernel GenerateTiles
+
+/*
+============================================================
+STEP 04 — SDF TILE ARRAY GENERATOR
+============================================================
+
+Generates multiple SDF tiles into a Texture2DArray.
+
+Each layer = one procedural tile.
+
+============================================================
+*/
+
+struct SDFCommand
+{
+    int shapeType;
+    int operation;
+
+    float4 paramsA;
+    float4 paramsB;
+};
+
+StructuredBuffer<SDFCommand> Commands;
+
+int CommandCount;
+
+RWTexture2DArray<float4> Result;
+
+int Resolution;
+int TileIndex;
+
+// -------------------------------
+// SDF Shape Library
+// -------------------------------
+
+float sdCircle(float2 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdBox(float2 p, float2 b)
+{
+    float2 d = abs(p) - b;
+    return length(max(d,0)) + min(max(d.x,d.y),0);
+}
+
+float sdLine(float2 p, float t)
+{
+    return abs(p.y) - t;
+}
+
+float sdCross(float2 p, float t)
+{
+    float d1 = abs(p.y) - t;
+    float d2 = abs(p.x) - t;
+    return min(d1,d2);
+}
+
+float EvaluateShape(int type,float2 p,float4 paramsA)
+{
+    float r = paramsA.x;
+    float w = paramsA.x;
+    float h = paramsA.y;
+    float t = paramsA.z;
+
+    if(type==0) return sdCircle(p,r);
+    if(type==1) return sdBox(p,float2(w,h));
+    if(type==2) return sdLine(p,t);
+    if(type==3) return sdCross(p,t);
+
+    return 1e5;
+}
+
+float ApplyOp(float a,float b,int op)
+{
+    if(op==0) return min(a,b);
+    if(op==1) return max(a,-b);
+    if(op==2) return max(a,b);
+
+    return a;
+}
+
+[numthreads(8,8,1)]
+void GenerateTiles(uint3 id : SV_DispatchThreadID)
+{
+    if(id.x >= (uint)Resolution || id.y >= (uint)Resolution)
+        return;
+
+    float2 uv = (id.xy + 0.5) / Resolution;
+    float2 p = uv - 0.5;
+
+    float d = 1e5;
+
+    for(int i=0;i<CommandCount;i++)
+    {
+        SDFCommand cmd = Commands[i];
+
+        float shapeDist =
+            EvaluateShape(
+                cmd.shapeType,
+                p - cmd.paramsB.xy,
+                cmd.paramsA
+            );
+
+        if(i==0)
+            d = shapeDist;
+        else
+            d = ApplyOp(d,shapeDist,cmd.operation);
+    }
+
+    float v = smoothstep(0.02,-0.02,d);
+
+    Result[int3(id.xy,TileIndex)] = float4(v,v,v,1);
+}

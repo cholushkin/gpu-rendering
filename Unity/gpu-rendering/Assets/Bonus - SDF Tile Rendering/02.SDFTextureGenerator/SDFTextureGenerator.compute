@@ -1,0 +1,97 @@
+#pragma kernel GenerateShape
+
+/*
+============================================================
+STEP 02 — GPU SDF TEXTURE GENERATOR
+============================================================
+
+Features
+
+• Compute shader SDF generation
+• Configurable resolution
+• Generic shape parameter system
+• Shared SDF shape library
+• One kernel supporting multiple shapes
+
+Debug visualization:
+Distance is mapped to grayscale so the result
+can be viewed using a normal texture shader.
+
+Later steps will store raw distance values.
+
+============================================================
+*/
+
+RWTexture2D<float4> Result;
+
+int Resolution;
+
+int ShapeType;
+
+float4 ShapeParamsA;
+float4 ShapeParamsB;
+
+float sdCircle(float2 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdBox(float2 p, float2 b)
+{
+    float2 d = abs(p) - b;
+    return length(max(d,0)) + min(max(d.x,d.y),0);
+}
+
+float sdHorizontalLine(float2 p, float thickness)
+{
+    return abs(p.y) - thickness;
+}
+
+float sdCross(float2 p, float thickness)
+{
+    float d1 = abs(p.y) - thickness;
+    float d2 = abs(p.x) - thickness;
+    return min(d1,d2);
+}
+
+float EvaluateShape(int type, float2 p)
+{
+    float radius = ShapeParamsA.x;
+    float width  = ShapeParamsA.x;
+    float height = ShapeParamsA.y;
+    float thick  = ShapeParamsA.z;
+
+    if(type == 0)
+        return sdCircle(p,radius);
+
+    if(type == 1)
+        return sdBox(p,float2(width,height));
+
+    if(type == 2)
+        return sdHorizontalLine(p,thick);
+
+    if(type == 3)
+        return sdCross(p,thick);
+
+    return 1e5;
+}
+
+[numthreads(8,8,1)]
+void GenerateShape(uint3 id : SV_DispatchThreadID)
+{
+    if(id.x >= (uint)Resolution || id.y >= (uint)Resolution)
+        return;
+
+    float2 uv = (id.xy + 0.5) / Resolution;
+
+    float2 p = uv - 0.5;
+
+    p -= ShapeParamsB.xy;
+
+    float d = EvaluateShape(ShapeType,p);
+
+    // Debug visualization
+    float v = saturate(0.5 - d * 2.0);
+
+    Result[id.xy] = float4(v,v,v,1);
+}
