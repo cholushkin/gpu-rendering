@@ -1,0 +1,85 @@
+#pragma kernel GenerateTiles
+
+struct InstanceData
+{
+    float2 position;
+    float rotation;
+    float scale;
+    float noise;
+};
+
+RWStructuredBuffer<InstanceData> Result;
+
+int ViewWidth;
+int ViewHeight;
+
+float TileSpacing;
+float TileScale;
+
+float NoiseScale;
+
+float CameraX;
+float CameraZ;
+
+float hash(float2 p)
+{
+    p = frac(p*0.3183099+0.1);
+    p *= 17.0;
+    return frac(p.x*p.y*(p.x+p.y));
+}
+
+float noise(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+
+    float a = hash(i);
+    float b = hash(i + float2(1,0));
+    float c = hash(i + float2(0,1));
+    float d = hash(i + float2(1,1));
+
+    float2 u = f*f*(3.0-2.0*f);
+
+    return lerp(a,b,u.x) +
+           (c-a)*u.y*(1.0-u.x) +
+           (d-b)*u.x*u.y;
+}
+
+[numthreads(8,8,1)]
+void GenerateTiles(uint3 id : SV_DispatchThreadID)
+{
+    uint x = id.x;
+    uint y = id.y;
+
+    if(x >= ViewWidth || y >= ViewHeight)
+        return;
+
+    uint index = y * ViewWidth + x;
+
+    //------------------------------------------------
+    // camera tile index
+    //------------------------------------------------
+
+    float camTileX = floor(CameraX / TileSpacing);
+    float camTileZ = floor(CameraZ / TileSpacing);
+
+    float halfW = ViewWidth * 0.5;
+    float halfH = ViewHeight * 0.5;
+
+    float tileX = camTileX + (x - halfW);
+    float tileZ = camTileZ + (y - halfH);
+
+    float wx = tileX * TileSpacing;
+    float wz = tileZ * TileSpacing;
+
+    float n = noise(float2(wx,wz) * NoiseScale);
+
+    InstanceData data;
+
+    data.position = float2(wx,wz);
+    data.rotation = 0;
+    data.scale = TileScale;
+    data.noise = n;
+
+    Result[index] = data;
+}
