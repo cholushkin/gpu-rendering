@@ -1,0 +1,39 @@
+#pragma kernel FrustumCull
+
+struct InstanceData
+{
+    float2 position;
+    float rotation;
+    float scale;
+    uint tileIndex;
+};
+
+StructuredBuffer<InstanceData> Input;
+
+AppendStructuredBuffer<InstanceData> Visible;
+
+RWStructuredBuffer<uint> Args;
+
+uint InstanceCount;
+
+[numthreads(64,1,1)]
+void FrustumCull(uint id : SV_DispatchThreadID)
+{
+    if(id >= InstanceCount)
+        return;
+
+    InstanceData data = Input[id];
+
+    float2 p = data.position;
+
+    bool visible =
+        abs(p.x) < 100 &&
+        abs(p.y) < 100;
+
+    if(visible)
+    {
+        Visible.Append(data);
+
+        InterlockedAdd(Args[1],1);
+    }
+}

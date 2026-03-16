@@ -1,0 +1,43 @@
+#pragma kernel GenerateTiles
+
+struct InstanceData
+{
+    float2 position;
+    float rotation;
+    float scale;
+    uint tileIndex;
+};
+
+RWStructuredBuffer<InstanceData> Result;
+
+uint GridSize;
+float TileSpacing;
+float TileScale;
+int TileCount;
+
+[numthreads(8,8,1)]
+void GenerateTiles(uint3 id : SV_DispatchThreadID)
+{
+    uint x = id.x;
+    uint y = id.y;
+
+    if(x >= GridSize || y >= GridSize)
+        return;
+
+    uint index = y * GridSize + x;
+
+    float halfGrid = GridSize * 0.5;
+
+    float px = (x - halfGrid) * TileSpacing;
+    float py = (y - halfGrid) * TileSpacing;
+
+    InstanceData data;
+
+    data.position = float2(px,py);
+    data.rotation = 0;
+    data.scale = TileScale;
+
+    data.tileIndex = (x + y) % TileCount;
+
+    Result[index] = data;
+}
