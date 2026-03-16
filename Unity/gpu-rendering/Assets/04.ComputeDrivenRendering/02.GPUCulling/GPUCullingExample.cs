@@ -3,13 +3,14 @@ using UnityEngine;
 public class GPUCullingExample : MonoBehaviour
 {
     public ComputeShader Generator;
-    public ComputeShader Culling; // optional
+    public ComputeShader Culling;
 
     public Material Material;
 
     public Texture2D[] TileTextures;
 
     public Camera MainCamera;
+    public Transform CamCenter;
 
     public int GridSize = 128;
     public float TileSpacing = 1.2f;
@@ -42,18 +43,6 @@ public class GPUCullingExample : MonoBehaviour
 
     void Start()
     {
-        if (Generator == null)
-            Debug.LogError("Generator compute shader missing");
-
-        if (Material == null)
-            Debug.LogError("Material missing");
-
-        if (MainCamera == null)
-            Debug.LogError("MainCamera missing");
-
-        if (TileTextures == null || TileTextures.Length == 0)
-            Debug.LogError("Tile textures missing");
-
         SetupCamera();
 
         _useCulling = Culling != null;
@@ -80,8 +69,8 @@ public class GPUCullingExample : MonoBehaviour
 
     void SetupCamera()
     {
-        MainCamera.transform.position = new Vector3(0,0,60);
-        MainCamera.transform.rotation = Quaternion.Euler(0,180,0);
+        CamCenter.position = new Vector3(0,0,0);
+        CamCenter.rotation = Quaternion.Euler(0,180,0);
 
         MainCamera.orthographic = true;
         MainCamera.orthographicSize = 40;
@@ -148,7 +137,6 @@ public class GPUCullingExample : MonoBehaviour
 
         _argsBuffer.SetData(args);
 
-        // default: render everything
         Material.SetBuffer("_InstanceData",_instanceBuffer);
     }
 
@@ -188,13 +176,11 @@ public class GPUCullingExample : MonoBehaviour
 
         Generator.Dispatch(_genKernel,groups,groups,1);
     }
-    
 
     void Update()
     {
         if (_useCulling == false)
         {
-            // draw everything
             Graphics.DrawMeshInstancedIndirect(
                 _quad,
                 0,
@@ -208,7 +194,25 @@ public class GPUCullingExample : MonoBehaviour
             return;
         }
 
-        // ---- GPU CULLING PATH ----
+        //------------------------------------------------
+        // Compute camera rect
+        //------------------------------------------------
+
+        float h = MainCamera.orthographicSize;
+        float w = h * MainCamera.aspect;
+
+        Vector3 c = MainCamera.transform.position;
+
+        Vector4 rect = new Vector4(
+            c.x - w,
+            c.y - h,
+            c.x + w,
+            c.y + h
+        );
+
+        //------------------------------------------------
+        // GPU Culling
+        //------------------------------------------------
 
         _visibleBuffer.SetCounterValue(0);
 
@@ -220,6 +224,8 @@ public class GPUCullingExample : MonoBehaviour
         Culling.SetBuffer(_cullKernel,"Input",_instanceBuffer);
         Culling.SetBuffer(_cullKernel,"Visible",_visibleBuffer);
         Culling.SetBuffer(_cullKernel,"Args",_argsBuffer);
+
+        Culling.SetVector("CameraRect",rect);
 
         Culling.SetInt("InstanceCount",_instanceCount);
 

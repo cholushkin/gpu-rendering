@@ -3,6 +3,7 @@ using UnityEngine;
 public class ComputeGeneratedTilesExample : MonoBehaviour
 {
     public Camera MainCamera;
+    public Transform CamCenter;
     public ComputeShader Generator;
     public Material Material;
 
@@ -31,8 +32,8 @@ public class ComputeGeneratedTilesExample : MonoBehaviour
     void Start()
     {
         
-        MainCamera.transform.position = new Vector3(0,0,30);
-        MainCamera.transform.rotation = Quaternion.Euler(0,180,0);
+        CamCenter.position = new Vector3(0,0,0);
+        CamCenter.rotation = Quaternion.Euler(0,-180,0);
         MainCamera.orthographic = true;
         MainCamera.orthographicSize = 20;
         

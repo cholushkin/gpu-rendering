@@ -1,5 +1,33 @@
 #pragma kernel FrustumCull
 
+/*
+============================================================
+STEP 02 — GPU FRUSTUM CULLING
+============================================================
+
+Features
+
+• GPU instance visibility testing
+• Append buffer for visible instances
+• Indirect draw argument update
+• Orthographic camera rectangle test
+
+Pipeline
+
+Input Instances
+        │
+Compute Shader
+        │
+Visibility Test
+        │
+Append Visible Instances
+        │
+Update indirect draw count
+        │
+DrawMeshInstancedIndirect
+============================================================
+*/
+
 struct InstanceData
 {
     float2 position;
@@ -16,6 +44,13 @@ RWStructuredBuffer<uint> Args;
 
 uint InstanceCount;
 
+// Camera rect
+// x = minX
+// y = minY
+// z = maxX
+// w = maxY
+float4 CameraRect;
+
 [numthreads(64,1,1)]
 void FrustumCull(uint id : SV_DispatchThreadID)
 {
@@ -27,13 +62,16 @@ void FrustumCull(uint id : SV_DispatchThreadID)
     float2 p = data.position;
 
     bool visible =
-        abs(p.x) < 100 &&
-        abs(p.y) < 100;
+        p.x > CameraRect.x &&
+        p.x < CameraRect.z &&
+        p.y > CameraRect.y &&
+        p.y < CameraRect.w;
 
     if(visible)
     {
         Visible.Append(data);
 
+        // increment instance count in indirect args
         InterlockedAdd(Args[1],1);
     }
 }

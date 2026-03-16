@@ -196,7 +196,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GPUCullingExample
   Generator: {fileID: 7200000, guid: ad41a90ba7290d84b9e16bbc684e855a, type: 3}
-  Culling: {fileID: 0}
+  Culling: {fileID: 7200000, guid: a9353f5712ada174ca5480621add1ab1, type: 3}
   Material: {fileID: 2100000, guid: a11c06d6994efba4fbfbe36ac421f2cb, type: 2}
   TileTextures:
   - {fileID: 2800000, guid: e9bfee6604be95940a7c5d03f583e099, type: 3}
@@ -204,6 +204,7 @@ MonoBehaviour:
   - {fileID: 2800000, guid: d44e5e33d2f757c40bbbe0e23b21b8c2, type: 3}
   - {fileID: 2800000, guid: f86c5231f80a5d64aaa69165f96ded46, type: 3}
   MainCamera: {fileID: 1766275774}
+  CamCenter: {fileID: 129626349}
   GridSize: 128
   TileSpacing: 1.2
   TileScale: 1

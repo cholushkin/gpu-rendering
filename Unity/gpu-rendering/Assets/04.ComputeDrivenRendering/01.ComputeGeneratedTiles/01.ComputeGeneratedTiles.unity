@@ -177,7 +177,7 @@ Transform:
   m_GameObject: {fileID: 839271635}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 14.36182, y: 0, z: -10.68242}
+  m_LocalPosition: {x: 0, y: 0, z: -10.68242}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -196,6 +196,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ComputeGeneratedTilesExample
   MainCamera: {fileID: 1766275774}
+  CamCenter: {fileID: 129626349}
   Generator: {fileID: 7200000, guid: ad41a90ba7290d84b9e16bbc684e855a, type: 3}
   Material: {fileID: 2100000, guid: a11c06d6994efba4fbfbe36ac421f2cb, type: 2}
   TileTextures:
@@ -324,7 +325,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 1000
+  far clip plane: 100
   field of view: 60
   orthographic: 1
   orthographic size: 15
